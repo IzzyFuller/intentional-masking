@@ -1,0 +1,12 @@
+node_modules/
+dist/
+output/
+coverage/
+public/
+*.log
+*.aiff
+.DS_Store
+.remotion/
+.env
+.env.local
+izzy_reference.jpg
