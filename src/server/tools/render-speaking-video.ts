@@ -88,7 +88,7 @@ export async function renderSpeakingVideo(args: RenderSpeakingVideoArgs): Promis
       serveUrl: bundleLocation,
       id: 'AvatarSpeaking',
       inputProps,
-      chromiumOptions: { gl: 'angle' },
+      chromiumOptions: { gl: 'angle-egl' },
     });
 
     // Override duration based on audio
@@ -104,7 +104,7 @@ export async function renderSpeakingVideo(args: RenderSpeakingVideoArgs): Promis
       codec: 'h264',
       outputLocation: outputPath,
       inputProps,
-      chromiumOptions: { gl: 'angle' },
+      chromiumOptions: { gl: 'angle-egl' },
     });
 
     return {
