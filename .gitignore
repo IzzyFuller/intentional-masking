@@ -10,3 +10,6 @@ public/
 .env
 .env.local
 izzy_reference.jpg
+assets/animations/
+avatars_and_animations/
+out/
