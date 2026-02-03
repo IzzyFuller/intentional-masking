@@ -46,41 +46,18 @@ export async function renderAnimatedVideo(args: RenderAnimatedVideoArgs): Promis
     await fs.access(avatar_path);
     await fs.access(audio_path);
 
-    // Verify all animation files exist
-    for (const segment of animations) {
-      await fs.access(segment.file);
-    }
-
     // Create temp directory for Remotion assets
     const tempPublicDir = join(tmpdir(), `remotion-animated-${timestamp}`);
     await fs.mkdir(tempPublicDir, { recursive: true });
 
-    // Copy avatar and audio to temp folder
+    // Copy avatar (with embedded animations) and audio to temp folder
     const avatarFilename = basename(avatar_path);
     const audioFilename = basename(audio_path);
     await fs.copyFile(avatar_path, join(tempPublicDir, avatarFilename));
     await fs.copyFile(audio_path, join(tempPublicDir, audioFilename));
 
-    // Copy animation files and normalize segments
-    const normalizedAnimations = await Promise.all(
-      animations.map(async (segment) => {
-        const animFilename = basename(segment.file);
-        const destPath = join(tempPublicDir, animFilename);
-
-        // Only copy if not already copied (same filename)
-        try {
-          await fs.access(destPath);
-        } catch {
-          await fs.copyFile(segment.file, destPath);
-        }
-
-        const normalized = normalizeAnimationSegment(segment);
-        return {
-          ...normalized,
-          file: animFilename,  // Use just filename for staticFile()
-        };
-      })
-    );
+    // Normalize animation segments (animations are embedded in avatar, just need clip names)
+    const normalizedAnimations = animations.map((segment) => normalizeAnimationSegment(segment));
 
     // Ensure output directory exists
     await fs.mkdir(dirname(outputPath), { recursive: true });

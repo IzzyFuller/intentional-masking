@@ -7,7 +7,6 @@ import type { AnimationSegmentWithDefaults } from '../../config/animation-types'
 
 export interface AnimatedAvatarProps {
   avatarPath: string;
-  animationPath: string;
   segment: AnimationSegmentWithDefaults;
   morphTargets?: Record<string, number>;
   expression?: 'neutral' | 'happy' | 'thinking' | 'surprised';
@@ -19,38 +18,6 @@ const EXPRESSIONS: Record<string, Record<string, number>> = {
   thinking: { 'browInnerUp': 0.5, 'eyeLookUpLeft': 0.3, 'eyeLookUpRight': 0.3 },
   surprised: { 'browOuterUpLeft': 0.8, 'browOuterUpRight': 0.8, 'jawOpen': 0.3, 'eyeWideLeft': 0.5, 'eyeWideRight': 0.5 },
 };
-
-function findSkeleton(scene: THREE.Object3D): THREE.Skeleton | null {
-  let skeleton: THREE.Skeleton | null = null;
-  scene.traverse((child) => {
-    if (child instanceof THREE.SkinnedMesh && child.skeleton) {
-      skeleton = child.skeleton;
-    }
-  });
-  return skeleton;
-}
-
-function createSkeletonFromAnimations(animations: THREE.AnimationClip[]): THREE.Skeleton | null {
-  if (animations.length === 0) return null;
-
-  const boneNames = new Set<string>();
-  for (const clip of animations) {
-    for (const track of clip.tracks) {
-      const boneName = track.name.split('.')[0];
-      boneNames.add(boneName);
-    }
-  }
-
-  const bones: THREE.Bone[] = [];
-  for (const name of boneNames) {
-    const bone = new THREE.Bone();
-    bone.name = name;
-    bones.push(bone);
-  }
-
-  if (bones.length === 0) return null;
-  return new THREE.Skeleton(bones);
-}
 
 function calculateAnimationTime(
   frame: number,
@@ -112,32 +79,14 @@ function createAnimationMixer(
     return { mixer, action: null, clipDuration: 0 };
   }
 
-  let clip = segment.clip
+  // Find clip by name, or use first available
+  const clip = segment.clip
     ? animations.find(a => a.name === segment.clip)
     : animations[0];
 
-  if (!clip) {
-    clip = animations[0];
-  }
-
-  const sceneSkeleton = findSkeleton(scene);
-  const animationSkeleton = createSkeletonFromAnimations(animations);
-
-  let retargetedClip = clip;
-  if (sceneSkeleton && animationSkeleton) {
-    try {
-      retargetedClip = SkeletonUtils.retargetClip(
-        scene,
-        animationSkeleton,
-        clip,
-        { hip: 'Hips' }
-      );
-    } catch {
-      retargetedClip = clip;
-    }
-  }
-
-  const action = mixer.clipAction(retargetedClip);
+  // Bones match directly (avatar bones renamed to mixamorig: prefix in Blender)
+  // No retargeting needed
+  const action = mixer.clipAction(clip);
   action.setEffectiveWeight(segment.weight);
   action.setLoop(segment.loop ? THREE.LoopRepeat : THREE.LoopOnce, segment.loop ? Infinity : 1);
   action.clampWhenFinished = true;
@@ -148,7 +97,6 @@ function createAnimationMixer(
 
 export const AnimatedAvatar: React.FC<AnimatedAvatarProps> = ({
   avatarPath,
-  animationPath,
   segment,
   morphTargets = {},
   expression = 'neutral',
@@ -157,10 +105,9 @@ export const AnimatedAvatar: React.FC<AnimatedAvatarProps> = ({
   const { fps } = useVideoConfig();
   const groupRef = useRef<THREE.Group>(null);
 
+  // Load avatar with embedded animations from single file
   const avatarUrl = staticFile(avatarPath);
-  const animationUrl = staticFile(animationPath);
-  const { scene: avatarScene } = useGLTF(avatarUrl);
-  const { animations } = useGLTF(animationUrl);
+  const { scene: avatarScene, animations } = useGLTF(avatarUrl);
 
   const clonedScene = useMemo(() => {
     return SkeletonUtils.clone(avatarScene);

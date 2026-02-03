@@ -8,7 +8,7 @@ import { IntentionalMaskingServer } from './index.js';
 const PROJECT_ROOT = process.cwd();
 const TEST_AVATAR = join(PROJECT_ROOT, 'assets/sample_avatar.glb');
 const TEST_AUDIO = join(PROJECT_ROOT, 'test_audio.wav');
-const TEST_ANIMATION = join(PROJECT_ROOT, 'assets/sample_avatar.glb');
+const TEST_AVATAR_ANIMATED = join(PROJECT_ROOT, 'assets/sample_avatar_animated.glb');
 
 describe('IntentionalMaskingServer', () => {
   let server: IntentionalMaskingServer;
@@ -84,13 +84,13 @@ describe('IntentionalMaskingServer', () => {
   });
 
   describe('render_animated_video', () => {
-    it('renders video with animations', async () => {
+    it('renders video with embedded animations', async () => {
       const result = await client.callTool({
         name: 'render_animated_video',
         arguments: {
-          avatar_path: TEST_AVATAR,
+          avatar_path: TEST_AVATAR_ANIMATED,
           audio_path: TEST_AUDIO,
-          animations: [{ file: TEST_ANIMATION, start: 0, end: 2 }],
+          animations: [{ clip: 'Talking', start: 0, end: 2 }],
         },
       });
 
@@ -105,20 +105,5 @@ describe('IntentionalMaskingServer', () => {
       expect(stats.size).toBeGreaterThan(0);
     });
 
-    it('returns error when animation file not found', async () => {
-      const result = await client.callTool({
-        name: 'render_animated_video',
-        arguments: {
-          avatar_path: TEST_AVATAR,
-          audio_path: TEST_AUDIO,
-          animations: [{ file: '/nonexistent/anim.glb', start: 0, end: 2 }],
-        },
-      });
-
-      const content = result.content as Array<{ type: string; text: string }>;
-      const parsed = JSON.parse(content[0].text);
-      expect(parsed.success).toBe(false);
-      expect(parsed.error).toBeDefined();
-    });
   });
 });

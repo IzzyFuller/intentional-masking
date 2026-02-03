@@ -51,14 +51,13 @@ export const AvatarAnimated: React.FC<AvatarAnimatedProps> = ({
 
                 return (
                   <Sequence
-                    key={`${segment.file}-${index}`}
+                    key={`${segment.clip}-${index}`}
                     from={startFrame}
                     durationInFrames={durationFrames}
                     layout="none"
                   >
                     <AnimatedAvatar
                       avatarPath={avatarPath}
-                      animationPath={segment.file}
                       segment={segment}
                     />
                   </Sequence>
@@ -68,9 +67,7 @@ export const AvatarAnimated: React.FC<AvatarAnimatedProps> = ({
               // No animations - render static avatar (fallback)
               <AnimatedAvatar
                 avatarPath={avatarPath}
-                animationPath=""
                 segment={{
-                  file: '',
                   clip: '',
                   start: 0,
                   end: 0,

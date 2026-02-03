@@ -1,10 +1,10 @@
 /**
  * Animation segment types for body animation support
+ * Animations are embedded in the avatar GLB file, selected by clip name
  */
 
 export interface AnimationSegment {
-  file: string;      // Path to animation GLB file (from Mixamo or other source)
-  clip?: string;     // Clip name within file (default: first clip)
+  clip: string;      // Clip name in avatar GLB (e.g., "Talking", "Idle")
   start: number;     // Start time in seconds (in output video)
   end: number;       // End time in seconds (in output video)
   weight?: number;   // Blend weight 0-1 (default: 1.0)
@@ -12,7 +12,6 @@ export interface AnimationSegment {
 }
 
 export interface AnimationSegmentWithDefaults {
-  file: string;
   clip: string;
   start: number;
   end: number;
@@ -22,8 +21,7 @@ export interface AnimationSegmentWithDefaults {
 
 export function normalizeAnimationSegment(segment: AnimationSegment): AnimationSegmentWithDefaults {
   return {
-    file: segment.file,
-    clip: segment.clip || '',  // Empty string means first clip
+    clip: segment.clip,
     start: segment.start,
     end: segment.end,
     weight: segment.weight ?? 1.0,
