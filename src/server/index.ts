@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { renderSpeakingVideo } from './tools/render-speaking-video.js';
 import { renderAnimatedVideo } from './tools/render-animated-video.js';
 
-class IntentionalMaskingServer {
+export class IntentionalMaskingServer {
   private server: Server;
 
   constructor() {
@@ -156,11 +157,19 @@ class IntentionalMaskingServer {
     });
   }
 
+  async connect(transport: Transport) {
+    await this.server.connect(transport);
+  }
+
   async run() {
     const transport = new StdioServerTransport();
-    await this.server.connect(transport);
+    await this.connect(transport);
     console.error('Intentional Masking MCP server running');
   }
 }
 
-new IntentionalMaskingServer().run().catch(console.error);
+// Only auto-run when executed directly
+const isMain = process.argv[1]?.endsWith('index.js') || process.argv[1]?.endsWith('index.ts');
+if (isMain) {
+  new IntentionalMaskingServer().run().catch(console.error);
+}

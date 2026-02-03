@@ -1,80 +1,124 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { join } from 'path';
-import { renderSpeakingVideo } from './tools/render-speaking-video.js';
+import { promises as fs } from 'fs';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { IntentionalMaskingServer } from './index.js';
 
 const PROJECT_ROOT = process.cwd();
 const TEST_AVATAR = join(PROJECT_ROOT, 'assets/sample_avatar.glb');
 const TEST_AUDIO = join(PROJECT_ROOT, 'test_audio.wav');
+const TEST_ANIMATION = join(PROJECT_ROOT, 'assets/sample_avatar.glb');
 
-// Mock only the rendering boundary - the actual Remotion video rendering
-vi.mock('@remotion/bundler', () => ({
-  bundle: vi.fn().mockResolvedValue('/tmp/mock-bundle'),
-}));
+describe('IntentionalMaskingServer', () => {
+  let server: IntentionalMaskingServer;
+  let client: Client;
+  let clientTransport: InMemoryTransport;
+  let serverTransport: InMemoryTransport;
 
-vi.mock('@remotion/renderer', () => ({
-  selectComposition: vi.fn().mockResolvedValue({
-    id: 'AvatarSpeaking',
-    width: 1080,
-    height: 1080,
-    fps: 30,
-    durationInFrames: 1,
-    defaultProps: {},
-  }),
-  renderMedia: vi.fn().mockResolvedValue(undefined),
-}));
+  beforeAll(async () => {
+    // Create linked in-memory transports
+    [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
-describe('render_speaking_video tool', () => {
-  it('returns video path when avatar and audio exist', async () => {
-    const result = await renderSpeakingVideo({
-      avatar_path: TEST_AVATAR,
-      audio_path: TEST_AUDIO,
-    });
+    // Start server
+    server = new IntentionalMaskingServer();
+    await server.connect(serverTransport);
 
-    expect(result.success).toBe(true);
-    expect(result.video_path).toMatch(/\.mp4$/);
-    expect(result.duration_seconds).toBeGreaterThan(0);
+    // Start client
+    client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: {} });
+    await client.connect(clientTransport);
   });
 
-  it('accepts camera and lighting presets', async () => {
-    const result = await renderSpeakingVideo({
-      avatar_path: TEST_AVATAR,
-      audio_path: TEST_AUDIO,
-      camera_preset: 'medium',
-      lighting_preset: 'natural',
-    });
-
-    expect(result.success).toBe(true);
+  afterAll(async () => {
+    await clientTransport.close();
+    await serverTransport.close();
   });
 
-  it('uses custom output path when provided', async () => {
-    const customPath = '/tmp/test_video.mp4';
-    const result = await renderSpeakingVideo({
-      avatar_path: TEST_AVATAR,
-      audio_path: TEST_AUDIO,
-      output_path: customPath,
-    });
+  describe('tools/list', () => {
+    it('lists available tools', async () => {
+      const result = await client.listTools();
 
-    expect(result.success).toBe(true);
-    expect(result.video_path).toBe(customPath);
+      expect(result.tools).toHaveLength(2);
+      expect(result.tools.map(t => t.name)).toContain('render_speaking_video');
+      expect(result.tools.map(t => t.name)).toContain('render_animated_video');
+    });
   });
 
-  it('returns error when avatar file not found', async () => {
-    const result = await renderSpeakingVideo({
-      avatar_path: '/nonexistent/avatar.glb',
-      audio_path: TEST_AUDIO,
+  describe('render_speaking_video', () => {
+    it('renders video and returns result', async () => {
+      const result = await client.callTool({
+        name: 'render_speaking_video',
+        arguments: {
+          avatar_path: TEST_AVATAR,
+          audio_path: TEST_AUDIO,
+        },
+      });
+
+      const content = result.content as Array<{ type: string; text: string }>;
+      expect(content).toHaveLength(1);
+      const parsed = JSON.parse(content[0].text);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.video_path).toMatch(/\.mp4$/);
+      expect(parsed.duration_seconds).toBeGreaterThan(0);
+
+      // Verify actual file exists
+      const stats = await fs.stat(parsed.video_path);
+      expect(stats.size).toBeGreaterThan(0);
     });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBeDefined();
+    it('returns error when avatar not found', async () => {
+      const result = await client.callTool({
+        name: 'render_speaking_video',
+        arguments: {
+          avatar_path: '/nonexistent/avatar.glb',
+          audio_path: TEST_AUDIO,
+        },
+      });
+
+      const content = result.content as Array<{ type: string; text: string }>;
+      const parsed = JSON.parse(content[0].text);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toBeDefined();
+    });
   });
 
-  it('returns error when audio file not found', async () => {
-    const result = await renderSpeakingVideo({
-      avatar_path: TEST_AVATAR,
-      audio_path: '/nonexistent/audio.wav',
+  describe('render_animated_video', () => {
+    it('renders video with animations', async () => {
+      const result = await client.callTool({
+        name: 'render_animated_video',
+        arguments: {
+          avatar_path: TEST_AVATAR,
+          audio_path: TEST_AUDIO,
+          animations: [{ file: TEST_ANIMATION, start: 0, end: 2 }],
+        },
+      });
+
+      const content = result.content as Array<{ type: string; text: string }>;
+      const parsed = JSON.parse(content[0].text);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.video_path).toMatch(/\.mp4$/);
+
+      // Verify actual file exists
+      const stats = await fs.stat(parsed.video_path);
+      expect(stats.size).toBeGreaterThan(0);
     });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBeDefined();
+    it('returns error when animation file not found', async () => {
+      const result = await client.callTool({
+        name: 'render_animated_video',
+        arguments: {
+          avatar_path: TEST_AVATAR,
+          audio_path: TEST_AUDIO,
+          animations: [{ file: '/nonexistent/anim.glb', start: 0, end: 2 }],
+        },
+      });
+
+      const content = result.content as Array<{ type: string; text: string }>;
+      const parsed = JSON.parse(content[0].text);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toBeDefined();
+    });
   });
 });
