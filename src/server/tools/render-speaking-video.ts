@@ -28,6 +28,14 @@ export interface RenderSpeakingVideoResult {
 }
 
 export async function renderSpeakingVideo(args: RenderSpeakingVideoArgs): Promise<RenderSpeakingVideoResult> {
+  // Validate: empty animations array is an error (check before destructuring)
+  if (args.animations !== undefined && args.animations.length === 0) {
+    return {
+      success: false,
+      error: 'animations array cannot be empty. Omit the parameter for lip-sync only, or provide animation segments.',
+    };
+  }
+
   const {
     avatar_path,
     audio_path,
@@ -42,6 +50,7 @@ export async function renderSpeakingVideo(args: RenderSpeakingVideoArgs): Promis
   const outputPath = output_path || join(OUTPUT_DIR, `speaking_${timestamp}.mp4`);
 
   try {
+
     // Verify files exist
     await fs.access(avatar_path);
     await fs.access(audio_path);

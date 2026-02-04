@@ -35,19 +35,18 @@ describe('IntentionalMaskingServer', () => {
   });
 
   describe('tools/list', () => {
-    it('lists available tools', async () => {
+    it('lists render_video tool', async () => {
       const result = await client.listTools();
 
-      expect(result.tools).toHaveLength(2);
-      expect(result.tools.map(t => t.name)).toContain('render_speaking_video');
-      expect(result.tools.map(t => t.name)).toContain('render_animated_video');
+      expect(result.tools).toHaveLength(1);
+      expect(result.tools[0].name).toBe('render_video');
     });
   });
 
-  describe('render_speaking_video', () => {
-    it('renders video and returns result', async () => {
+  describe('render_video', () => {
+    it('renders video with lip sync only', async () => {
       const result = await client.callTool({
-        name: 'render_speaking_video',
+        name: 'render_video',
         arguments: {
           avatar_path: TEST_AVATAR,
           audio_path: TEST_AUDIO,
@@ -67,26 +66,9 @@ describe('IntentionalMaskingServer', () => {
       expect(stats.size).toBeGreaterThan(0);
     });
 
-    it('returns error when avatar not found', async () => {
+    it('renders video with body animations', async () => {
       const result = await client.callTool({
-        name: 'render_speaking_video',
-        arguments: {
-          avatar_path: '/nonexistent/avatar.glb',
-          audio_path: TEST_AUDIO,
-        },
-      });
-
-      const content = result.content as Array<{ type: string; text: string }>;
-      const parsed = JSON.parse(content[0].text);
-      expect(parsed.success).toBe(false);
-      expect(parsed.error).toBeDefined();
-    });
-  });
-
-  describe('render_animated_video', () => {
-    it('renders video with embedded animations', async () => {
-      const result = await client.callTool({
-        name: 'render_animated_video',
+        name: 'render_video',
         arguments: {
           avatar_path: TEST_AVATAR_ANIMATED,
           audio_path: TEST_AUDIO,
@@ -105,5 +87,35 @@ describe('IntentionalMaskingServer', () => {
       expect(stats.size).toBeGreaterThan(0);
     });
 
+    it('returns error when avatar not found', async () => {
+      const result = await client.callTool({
+        name: 'render_video',
+        arguments: {
+          avatar_path: '/nonexistent/avatar.glb',
+          audio_path: TEST_AUDIO,
+        },
+      });
+
+      const content = result.content as Array<{ type: string; text: string }>;
+      const parsed = JSON.parse(content[0].text);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toBeDefined();
+    });
+
+    it('returns error when animations array is empty', async () => {
+      const result = await client.callTool({
+        name: 'render_video',
+        arguments: {
+          avatar_path: TEST_AVATAR,
+          audio_path: TEST_AUDIO,
+          animations: [],
+        },
+      });
+
+      const content = result.content as Array<{ type: string; text: string }>;
+      const parsed = JSON.parse(content[0].text);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('animations');
+    });
   });
 });
