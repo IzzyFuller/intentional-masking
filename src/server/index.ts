@@ -82,13 +82,9 @@ export class IntentionalMaskingServer {
                 items: {
                   type: 'object',
                   properties: {
-                    file: {
-                      type: 'string',
-                      description: 'Path to animation GLB file (from Mixamo or other source)'
-                    },
                     clip: {
                       type: 'string',
-                      description: 'Clip name within file (default: first clip)'
+                      description: 'Clip name in avatar GLB (e.g., "Talking", "Idle")'
                     },
                     start: {
                       type: 'number',
@@ -107,7 +103,7 @@ export class IntentionalMaskingServer {
                       description: 'Loop within segment (default: false)'
                     }
                   },
-                  required: ['file', 'start', 'end']
+                  required: ['clip', 'start', 'end']
                 }
               },
               camera_preset: {
