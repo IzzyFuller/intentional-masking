@@ -4,6 +4,7 @@ import { dirname, join, basename } from 'path';
 import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
 import { generateVisemesFromAudio, computeMorphTargetsForFrames } from '../services/lip-sync.js';
+import { normalizeAnimationSegment, type AnimationSegment } from '../../config/animation-types.js';
 
 const PROJECT_ROOT = process.env.INTENTIONAL_MASKING_ROOT || process.cwd();
 const OUTPUT_DIR = process.env.INTENTIONAL_MASKING_OUTPUT || `${PROJECT_ROOT}/output`;
@@ -12,6 +13,7 @@ const REMOTION_ENTRY = `${PROJECT_ROOT}/src/remotion/index.ts`;
 export interface RenderSpeakingVideoArgs {
   avatar_path: string;
   audio_path: string;
+  animations?: AnimationSegment[];
   camera_preset?: 'closeup' | 'medium' | 'full';
   lighting_preset?: 'soft' | 'dramatic' | 'natural';
   background?: string;
@@ -29,6 +31,7 @@ export async function renderSpeakingVideo(args: RenderSpeakingVideoArgs): Promis
   const {
     avatar_path,
     audio_path,
+    animations = [],
     camera_preset = 'medium',
     lighting_preset = 'soft',
     background = '#1a1a2e',
@@ -74,10 +77,14 @@ export async function renderSpeakingVideo(args: RenderSpeakingVideoArgs): Promis
       onProgress: (_progress: number) => {},
     });
 
+    // Normalize animation segments
+    const normalizedAnimations = animations.map(normalizeAnimationSegment);
+
     const inputProps = {
       avatarPath: avatarFilename,  // Just filename, loaded via staticFile()
       audioPath: audioFilename,    // Just filename, loaded via staticFile()
       morphTargetsPerFrame: lipSyncData.morphTargetsPerFrame,
+      animations: normalizedAnimations,
       cameraPreset: camera_preset,
       lightingPreset: lighting_preset,
       background,

@@ -1,11 +1,11 @@
 import { cloneElement, isValidElement, type ReactElement } from 'react';
 import { useCurrentFrame } from 'remotion';
 import type { MorphTargetValues } from '../../config/viseme-map';
-import type { AvatarProps } from './Avatar';
+import type { AnimatedAvatarProps } from './AnimatedAvatar';
 
 export interface LipSyncControllerProps {
   morphTargetsPerFrame: Array<{ frameNumber: number; morphTargets: MorphTargetValues }>;
-  children: ReactElement<AvatarProps>;
+  children: ReactElement<AnimatedAvatarProps>;
 }
 
 export const LipSyncController: React.FC<LipSyncControllerProps> = ({

@@ -1,7 +1,6 @@
-import { useGLTF } from '@react-three/drei';
-import { useEffect, useMemo, useRef } from 'react';
+import { useGLTF, useAnimations } from '@react-three/drei';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { AnimationSegmentWithDefaults } from '../../config/animation-types';
 
@@ -109,24 +108,30 @@ export const AnimatedAvatar: React.FC<AnimatedAvatarProps> = ({
   const avatarUrl = staticFile(avatarPath);
   const { scene: avatarScene, animations } = useGLTF(avatarUrl);
 
+  // Clone scene for rendering
   const clonedScene = useMemo(() => {
-    return SkeletonUtils.clone(avatarScene);
+    return avatarScene.clone(true);
   }, [avatarScene]);
 
-  const { mixer, clipDuration } = useMemo(() => {
-    return createAnimationMixer(clonedScene, animations, segment);
-  }, [clonedScene, animations, segment]);
+  // Use drei's useAnimations to properly bind mixer to scene
+  const { mixer } = useAnimations(animations, clonedScene);
 
-  useEffect(() => {
-    if (!mixer) return;
-    const time = calculateAnimationTime(frame, fps, segment.start, clipDuration, segment.loop);
-    mixer.setTime(time);
-  }, [mixer, frame, fps, segment.start, segment.loop, clipDuration]);
-
-  useEffect(() => {
+  // Apply morph targets and animation synchronously each frame
+  useMemo(() => {
+    // Apply morph targets (lip sync + expression)
     const expressionMorphs = EXPRESSIONS[expression] || {};
     applyMorphTargets(clonedScene, morphTargets, expressionMorphs);
-  }, [clonedScene, morphTargets, expression]);
+
+    // Apply body animation if clip specified and mixer exists
+    if (segment.clip && mixer && animations.length > 0) {
+      const clip = animations.find(a => a.name === segment.clip) || animations[0];
+      if (clip) {
+        const time = calculateAnimationTime(frame, fps, segment.start, clip.duration, segment.loop);
+        mixer.setTime(time);
+        mixer.update(0);
+      }
+    }
+  }, [clonedScene, morphTargets, expression, segment, mixer, animations, frame, fps]);
 
   return (
     <group ref={groupRef}>

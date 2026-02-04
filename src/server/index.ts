@@ -4,7 +4,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { renderSpeakingVideo } from './tools/render-speaking-video.js';
-import { renderAnimatedVideo } from './tools/render-animated-video.js';
 
 export class IntentionalMaskingServer {
   private server: Server;
@@ -24,47 +23,8 @@ export class IntentionalMaskingServer {
     this.server.setRequestHandler(ListToolsRequestSchema, () => ({
       tools: [
         {
-          name: 'render_speaking_video',
-          description: 'Render an avatar speaking with lip sync from audio',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              avatar_path: {
-                type: 'string',
-                description: 'Path to the avatar .glb file'
-              },
-              audio_path: {
-                type: 'string',
-                description: 'Path to audio file (from TTS like info-dump)'
-              },
-              camera_preset: {
-                type: 'string',
-                enum: ['closeup', 'medium', 'full'],
-                default: 'medium',
-                description: 'Camera angle preset'
-              },
-              lighting_preset: {
-                type: 'string',
-                enum: ['soft', 'dramatic', 'natural'],
-                default: 'soft',
-                description: 'Lighting style'
-              },
-              background: {
-                type: 'string',
-                default: '#1a1a2e',
-                description: 'Background color (hex)'
-              },
-              output_path: {
-                type: 'string',
-                description: 'Optional output path (default: auto-generated in output/)'
-              }
-            },
-            required: ['avatar_path', 'audio_path']
-          }
-        },
-        {
-          name: 'render_animated_video',
-          description: 'Render an avatar speaking with lip sync from audio and body animations',
+          name: 'render_video',
+          description: 'Render an avatar speaking with lip sync from audio, optionally with body animations',
           inputSchema: {
             type: 'object',
             properties: {
@@ -78,7 +38,7 @@ export class IntentionalMaskingServer {
               },
               animations: {
                 type: 'array',
-                description: 'Body animation timeline',
+                description: 'Optional body animation timeline',
                 items: {
                   type: 'object',
                   properties: {
@@ -128,7 +88,7 @@ export class IntentionalMaskingServer {
                 description: 'Optional output path (default: auto-generated in output/)'
               }
             },
-            required: ['avatar_path', 'audio_path', 'animations']
+            required: ['avatar_path', 'audio_path']
           }
         }
       ]
@@ -139,10 +99,8 @@ export class IntentionalMaskingServer {
 
       try {
         switch (name) {
-          case 'render_speaking_video':
+          case 'render_video':
             return { content: [{ type: 'text', text: JSON.stringify(await renderSpeakingVideo(args as any)) }] };
-          case 'render_animated_video':
-            return { content: [{ type: 'text', text: JSON.stringify(await renderAnimatedVideo(args as any)) }] };
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
         }

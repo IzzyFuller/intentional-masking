@@ -1,14 +1,24 @@
 import { ThreeCanvas } from '@remotion/three';
 import { Audio, useVideoConfig, staticFile } from 'remotion';
-import { Avatar } from './components/Avatar';
+import { AnimatedAvatar } from './components/AnimatedAvatar';
 import { Scene } from './components/Scene';
 import { LipSyncController } from './components/LipSyncController';
 import type { AvatarSpeakingProps } from './Root';
+import type { AnimationSegmentWithDefaults } from '../config/animation-types';
+
+const DEFAULT_SEGMENT: AnimationSegmentWithDefaults = {
+  clip: '',
+  start: 0,
+  end: 0,
+  weight: 1,
+  loop: false,
+};
 
 export const AvatarSpeaking: React.FC<AvatarSpeakingProps> = ({
   avatarPath = '',
   audioPath = '',
   morphTargetsPerFrame = [],
+  animations = [],
   cameraPreset = 'medium',
   lightingPreset = 'soft',
   background = '#1a1a2e',
@@ -18,6 +28,9 @@ export const AvatarSpeaking: React.FC<AvatarSpeakingProps> = ({
   if (!avatarPath) {
     return <div style={{ background, width, height }} />;
   }
+
+  // Use first animation segment or default (no animation)
+  const segment = animations.length > 0 ? animations[0] : DEFAULT_SEGMENT;
 
   return (
     <>
@@ -31,7 +44,7 @@ export const AvatarSpeaking: React.FC<AvatarSpeakingProps> = ({
       >
         <Scene cameraPreset={cameraPreset} lightingPreset={lightingPreset}>
           <LipSyncController morphTargetsPerFrame={morphTargetsPerFrame}>
-            <Avatar avatarPath={avatarPath} expression="neutral" pose="default" />
+            <AnimatedAvatar avatarPath={avatarPath} segment={segment} />
           </LipSyncController>
         </Scene>
       </ThreeCanvas>
