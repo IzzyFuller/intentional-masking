@@ -57,6 +57,7 @@ describe('IntentionalMaskingServer', () => {
       expect(content).toHaveLength(1);
       const parsed = JSON.parse(content[0].text);
 
+      console.log('Response:', JSON.stringify(parsed, null, 2));
       expect(parsed.success).toBe(true);
       expect(parsed.video_path).toMatch(/\.mp4$/);
       expect(parsed.duration_seconds).toBeGreaterThan(0);
