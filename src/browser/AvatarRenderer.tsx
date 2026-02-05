@@ -228,16 +228,7 @@ function AvatarScene({ avatarPath, visemes, animations }: AvatarSceneProps) {
       }
     });
 
-    // Strip root bone position track — Mixamo animation data uses a different
-    // coordinate space than the avatar's bind pose, which moves the entire
-    // skeleton off-screen. Root bone rotation is sufficient for body animation.
-    const rootBoneName = clip.tracks[0]?.name.split('.')[0];
-    const filteredTracks = clip.tracks.filter(
-      (track) => !(track.name === `${rootBoneName}.position`)
-    );
-    const filteredClip = new THREE.AnimationClip(clip.name, clip.duration, filteredTracks);
-
-    const action = mixer.clipAction(filteredClip);
+    const action = mixer.clipAction(clip);
     action.setEffectiveWeight(segment.weight ?? 1);
     action.setLoop(
       segment.loop ? THREE.LoopRepeat : THREE.LoopOnce,
