@@ -62,7 +62,11 @@ def clear_scene():
 
 
 def import_glb_avatar(glb_path: Path):
-    """Import the GLB avatar as the target armature (keeps morph targets)."""
+    """Import the GLB avatar as the target armature (keeps morph targets).
+
+    Strips any pre-existing animations (e.g. Avaturn's blink animation)
+    and resets shape key values to 0 so our animations start from a clean state.
+    """
     print(f"Importing GLB avatar: {glb_path}")
     bpy.ops.import_scene.gltf(filepath=str(glb_path))
 
@@ -82,6 +86,31 @@ def import_glb_avatar(glb_path: Path):
         for c in armature.children if c.type == 'MESH'
     )
     print(f"Found armature: {armature.name} ({bone_count} bones, {mesh_count} meshes, {morph_count} morph targets)")
+
+    # Strip pre-existing animations (Avaturn includes a blink/idle animation
+    # that sets eyeBlinkLeft/Right shape keys, causing closed eyes)
+    if armature.animation_data:
+        for track in list(armature.animation_data.nla_tracks):
+            print(f"  Removing pre-existing NLA track: {track.name}")
+            armature.animation_data.nla_tracks.remove(track)
+        if armature.animation_data.action:
+            print(f"  Removing pre-existing action: {armature.animation_data.action.name}")
+            armature.animation_data.action = None
+
+    # Reset all shape key values to 0 (Avaturn bakes default expression values
+    # like eyeBlinkLeft=0.45 into the GLB, causing half-closed eyes)
+    for child in armature.children:
+        if child.type != 'MESH' or not child.data.shape_keys:
+            continue
+        reset_count = 0
+        for kb in child.data.shape_keys.key_blocks:
+            if kb.name == "Basis":
+                continue
+            if abs(kb.value) > 0.001:
+                kb.value = 0.0
+                reset_count += 1
+        if reset_count > 0:
+            print(f"  Reset {reset_count} shape keys on {child.name}")
 
     return armature
 
