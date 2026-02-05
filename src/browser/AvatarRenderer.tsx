@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useGLTF, useAnimations } from '@react-three/drei';
+import { useGLTF } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { VideoCanvas, useVideoCanvas, VideoCanvasManager } from './r3f-video-recorder';
@@ -191,7 +191,7 @@ function AvatarScene({ avatarPath, visemes, animations }: AvatarSceneProps) {
 
   // Load avatar with embedded animations
   const { scene, animations: clips } = useGLTF(avatarPath);
-  const { actions, mixer } = useAnimations(clips, groupRef);
+  const mixerRef = useRef<THREE.AnimationMixer | null>(null);
 
   // Collect morph target meshes once avatar loads
   useEffect(() => {
@@ -204,35 +204,64 @@ function AvatarScene({ avatarPath, visemes, animations }: AvatarSceneProps) {
     console.log(`[LipSync] Received ${visemes.length} viseme frames`);
   }, [scene]);
 
-  // Start animation when clip is specified
+  // Manual mixer for frame-accurate body animation — no drei auto-update
   useEffect(() => {
-    if (animations.length === 0 || !actions) return;
+    if (animations.length === 0 || clips.length === 0) return;
 
+    const group = groupRef.current;
+    if (!group) return;
+
+    const mixer = new THREE.AnimationMixer(group);
     const segment = animations[0];
-    const action = actions[segment.clip];
+    const clip = clips.find(c => c.name === segment.clip);
 
-    if (action) {
-      action.reset();
-      action.setEffectiveWeight(segment.weight ?? 1);
-      action.setLoop(
-        segment.loop ? THREE.LoopRepeat : THREE.LoopOnce,
-        segment.loop ? Infinity : 1
-      );
-      action.clampWhenFinished = true;
-      action.play();
+    if (!clip) {
+      console.warn(`[Animation] Clip "${segment.clip}" not found in`, clips.map(c => c.name));
+      return;
     }
 
+    // Disable frustum culling on SkinnedMeshes — their bounding boxes don't
+    // update with bone deformations, so the renderer culls them incorrectly
+    scene.traverse((child) => {
+      if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
+        child.frustumCulled = false;
+      }
+    });
+
+    // Strip root bone position track — Mixamo animation data uses a different
+    // coordinate space than the avatar's bind pose, which moves the entire
+    // skeleton off-screen. Root bone rotation is sufficient for body animation.
+    const rootBoneName = clip.tracks[0]?.name.split('.')[0];
+    const filteredTracks = clip.tracks.filter(
+      (track) => !(track.name === `${rootBoneName}.position`)
+    );
+    const filteredClip = new THREE.AnimationClip(clip.name, clip.duration, filteredTracks);
+
+    const action = mixer.clipAction(filteredClip);
+    action.setEffectiveWeight(segment.weight ?? 1);
+    action.setLoop(
+      segment.loop ? THREE.LoopRepeat : THREE.LoopOnce,
+      segment.loop ? Infinity : 1
+    );
+    action.clampWhenFinished = true;
+    action.play();
+    mixerRef.current = mixer;
+
+    console.log(`[Animation] Playing "${segment.clip}" (${clip.duration.toFixed(2)}s, ${clip.tracks.length} tracks)`);
+
     return () => {
-      action?.stop();
+      mixer.stopAllAction();
+      mixer.uncacheRoot(group);
+      mixerRef.current = null;
     };
-  }, [actions, animations]);
+  }, [clips, animations]);
 
   // Apply viseme morph targets and sync body animation every frame
   useFrame(() => {
     const currentTime = videoCanvas.time;
 
-    // Body animation sync
-    if (mixer && animations.length > 0) {
+    // Body animation sync — sole time control, no competing drei auto-update
+    if (mixerRef.current && animations.length > 0) {
       const segment = animations[0];
       const clip = clips.find(c => c.name === segment.clip);
       if (clip) {
@@ -241,7 +270,7 @@ function AvatarScene({ avatarPath, visemes, animations }: AvatarSceneProps) {
           const animTime = segment.loop
             ? time % clip.duration
             : Math.min(time, clip.duration);
-          mixer.setTime(animTime);
+          mixerRef.current.setTime(animTime);
         }
       }
     }

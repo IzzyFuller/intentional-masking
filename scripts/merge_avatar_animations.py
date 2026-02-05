@@ -4,12 +4,8 @@ Blender 5.0 Python script to merge avatar with Mixamo animations.
 Usage:
     blender --background --python scripts/merge_avatar_animations.py
 
-Or run from within Blender's scripting tab.
-
-Key settings to preserve keyframes:
-- Always Sample Animation: ENABLED
-- Sampling Rate: 1
-- Group By NLA Track: DISABLED
+Follows the Don McCurdy workflow: import base character AND animations as FBX
+so bone orientations match. Then import GLB morph targets separately.
 
 Blender 5.0 uses layered actions:
 - action.layers[].strips[].channelbags[].fcurves[]
@@ -18,13 +14,13 @@ Blender 5.0 uses layered actions:
 import bpy
 from pathlib import Path
 
-# Configuration - adjust these paths as needed
+# Configuration
 PROJECT_ROOT = Path(__file__).parent.parent
-AVATAR_PATH = PROJECT_ROOT / "assets" / "sample_avatar.glb"
+AVATAR_GLB_PATH = PROJECT_ROOT / "assets" / "sample_avatar.glb"
+AVATAR_FBX_PATH = PROJECT_ROOT / "avatars_and_animations" / "mesh_for_mixamo_72940d11f8.fbx"
 ANIMATIONS_DIR = PROJECT_ROOT / "avatars_and_animations"
 OUTPUT_PATH = PROJECT_ROOT / "assets" / "sample_avatar_animated.glb"
 
-# Which animations to include (None = all FBX files)
 SELECTED_ANIMATIONS = [
     "Talking.fbx",
     "Idle.fbx",
@@ -58,7 +54,6 @@ def clear_scene():
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete(use_global=False)
 
-    # Clear orphan data
     for block in bpy.data.meshes:
         if block.users == 0:
             bpy.data.meshes.remove(block)
@@ -70,12 +65,16 @@ def clear_scene():
             bpy.data.actions.remove(block)
 
 
-def import_avatar(avatar_path: Path):
-    """Import the GLB avatar."""
-    print(f"Importing avatar: {avatar_path}")
-    bpy.ops.import_scene.gltf(filepath=str(avatar_path))
+def import_fbx_avatar(fbx_path: Path):
+    """Import the base character as FBX (same bone convention as animations)."""
+    print(f"Importing base character (FBX): {fbx_path}")
+    bpy.ops.import_scene.fbx(
+        filepath=str(fbx_path),
+        use_anim=False,
+        ignore_leaf_bones=True,
+        automatic_bone_orientation=True,
+    )
 
-    # Find the armature
     armature = None
     for obj in bpy.context.selected_objects:
         if obj.type == 'ARMATURE':
@@ -83,29 +82,68 @@ def import_avatar(avatar_path: Path):
             break
 
     if not armature:
-        raise RuntimeError("No armature found in avatar!")
+        raise RuntimeError("No armature found in FBX avatar!")
 
-    print(f"Found armature: {armature.name}")
-
-    # Rename bones to match Mixamo naming convention (add mixamorig: prefix)
-    # This is required because Mixamo animations target bones with this prefix
-    print("Renaming bones to match Mixamo convention...")
-    renamed_count = 0
-    for bone in armature.data.bones:
-        if not bone.name.startswith("mixamorig:"):
-            old_name = bone.name
-            bone.name = f"mixamorig:{old_name}"
-            renamed_count += 1
-    print(f"  Renamed {renamed_count} bones (added mixamorig: prefix)")
+    bone_count = len(armature.data.bones)
+    mesh_count = len([c for c in armature.children if c.type == 'MESH'])
+    print(f"Found armature: {armature.name} ({bone_count} bones, {mesh_count} meshes)")
 
     return armature
 
 
+def import_glb_morph_targets(glb_path: Path, fbx_armature):
+    """Import GLB avatar and transfer morph target meshes to the FBX armature."""
+    print(f"\nImporting GLB for morph targets: {glb_path}")
+    bpy.ops.import_scene.gltf(filepath=str(glb_path))
+
+    glb_armature = None
+    glb_meshes = []
+    for obj in bpy.context.selected_objects:
+        if obj.type == 'ARMATURE':
+            glb_armature = obj
+        elif obj.type == 'MESH':
+            glb_meshes.append(obj)
+
+    if not glb_armature:
+        print("  Warning: No armature in GLB, skipping morph target transfer")
+        return
+
+    # Find meshes with shape keys (morph targets)
+    morph_meshes = [m for m in glb_meshes if m.data.shape_keys]
+    print(f"  Found {len(morph_meshes)} meshes with morph targets")
+
+    # Delete FBX meshes — we'll use GLB meshes instead (they have morph targets)
+    fbx_meshes = [c for c in fbx_armature.children if c.type == 'MESH']
+    for mesh in fbx_meshes:
+        print(f"  Removing FBX mesh: {mesh.name}")
+        bpy.data.objects.remove(mesh, do_unlink=True)
+
+    # Re-parent GLB meshes to the FBX armature
+    for mesh in glb_meshes:
+        # Clear existing parent
+        mesh.parent = None
+        mesh.matrix_world = mesh.matrix_world.copy()
+
+        # Parent to FBX armature with armature deform (preserving vertex groups)
+        mesh.parent = fbx_armature
+        # Add armature modifier if not present
+        has_armature_mod = any(m.type == 'ARMATURE' for m in mesh.modifiers)
+        if not has_armature_mod:
+            mod = mesh.modifiers.new(name='Armature', type='ARMATURE')
+            mod.object = fbx_armature
+
+        shape_key_count = len(mesh.data.shape_keys.key_blocks) if mesh.data.shape_keys else 0
+        print(f"  Re-parented: {mesh.name} ({shape_key_count} shape keys)")
+
+    # Delete GLB armature
+    bpy.data.objects.remove(glb_armature, do_unlink=True)
+    print("  Deleted GLB armature")
+
+
 def import_animation(fbx_path: Path, armature):
-    """Import a Mixamo FBX animation and transfer it to the avatar armature."""
+    """Import a Mixamo FBX animation and transfer it to the base armature."""
     print(f"\nImporting animation: {fbx_path.name}")
 
-    # Import the FBX
     bpy.ops.import_scene.fbx(
         filepath=str(fbx_path),
         use_anim=True,
@@ -113,7 +151,6 @@ def import_animation(fbx_path: Path, armature):
         automatic_bone_orientation=True,
     )
 
-    # Find the imported armature (it's selected after import)
     imported_armature = None
     for obj in bpy.context.selected_objects:
         if obj.type == 'ARMATURE':
@@ -124,43 +161,30 @@ def import_animation(fbx_path: Path, armature):
         print(f"  Warning: No armature in {fbx_path.name}, skipping")
         return None
 
-    # Get the action from the imported armature
     if not imported_armature.animation_data or not imported_armature.animation_data.action:
         print(f"  Warning: No animation data in {fbx_path.name}, skipping")
         bpy.data.objects.remove(imported_armature)
         return None
 
     action = imported_armature.animation_data.action
-
-    # Rename the action to something meaningful
     animation_name = fbx_path.stem.replace(" ", "_").replace("-", "_")
     action.name = animation_name
 
-    # Count keyframes to verify (Blender 5.0 API)
     keyframe_count = get_keyframe_count(action)
     fcurve_count = get_fcurve_count(action)
     print(f"  Action: {action.name}, fcurves: {fcurve_count}, keyframes: {keyframe_count}")
 
-    # Transfer the action to the main armature
-    # First, ensure the main armature has animation data
     if not armature.animation_data:
         armature.animation_data_create()
 
-    # Stash the action in NLA so it gets exported
-    # This is CRITICAL - actions must be stashed or they won't export!
     track = armature.animation_data.nla_tracks.new()
     track.name = animation_name
-
-    # Add the action as a strip
     start_frame = int(action.frame_range[0])
     strip = track.strips.new(animation_name, start_frame, action)
     strip.name = animation_name
-
     print(f"  Stashed in NLA track: {track.name}")
 
-    # Delete the imported armature (we only needed its action)
     bpy.data.objects.remove(imported_armature, do_unlink=True)
-
     return action
 
 
@@ -181,7 +205,6 @@ def verify_animations(armature):
         for strip in track.strips:
             action = strip.action
             if action:
-                # Blender 5.0 API
                 kf_count = get_keyframe_count(action)
                 fc_count = get_fcurve_count(action)
                 print(f"  Strip: {strip.name}, fcurves: {fc_count}, keyframes: {kf_count}")
@@ -199,34 +222,24 @@ def export_glb(output_path: Path, armature):
     """Export as GLB with proper settings to preserve keyframes."""
     print(f"\n=== EXPORTING TO {output_path} ===")
 
-    # Select the armature and its children (mesh)
     bpy.ops.object.select_all(action='DESELECT')
     armature.select_set(True)
     for child in armature.children:
         child.select_set(True)
     bpy.context.view_layer.objects.active = armature
 
-    # Export with CRITICAL settings (Blender 5.0 API)
     bpy.ops.export_scene.gltf(
         filepath=str(output_path),
         export_format='GLB',
-
-        # Animation settings - CRITICAL!
         export_animations=True,
-        export_animation_mode='ACTIONS',  # Export all actions
-        export_nla_strips=True,  # Include NLA strips
-
-        # Sampling - CRITICAL for preserving keyframes!
-        export_force_sampling=True,  # "Always Sample Animation" - MUST BE TRUE!
-        export_bake_animation=True,  # Bake animations
-
-        # Skinning & Mesh
+        export_animation_mode='ACTIONS',
+        export_nla_strips=True,
+        export_force_sampling=True,
+        export_bake_animation=True,
         export_skins=True,
-        export_morph=True,  # Export shape keys/morph targets
+        export_morph=True,
         export_texcoords=True,
         export_normals=True,
-
-        # Only export selected
         use_selection=True,
     )
 
@@ -238,22 +251,26 @@ def main():
     print("AVATAR + ANIMATION MERGER")
     print("=" * 60)
 
-    # Clear scene
     clear_scene()
 
-    # Import avatar
-    armature = import_avatar(AVATAR_PATH)
+    # Step 1: Import base character as FBX (same bone convention as animations)
+    armature = import_fbx_avatar(AVATAR_FBX_PATH)
 
-    # Find animation files
+    # Step 2: Import GLB and transfer morph target meshes to FBX armature
+    import_glb_morph_targets(AVATAR_GLB_PATH, armature)
+
+    # Step 3: Import animations
     if SELECTED_ANIMATIONS:
         fbx_files = [ANIMATIONS_DIR / name for name in SELECTED_ANIMATIONS]
         fbx_files = [f for f in fbx_files if f.exists()]
     else:
-        fbx_files = list(ANIMATIONS_DIR.glob("*.fbx"))
+        fbx_files = [
+            f for f in ANIMATIONS_DIR.glob("*.fbx")
+            if f.name != AVATAR_FBX_PATH.name
+        ]
 
     print(f"\nFound {len(fbx_files)} animation files to import")
 
-    # Import each animation
     imported_count = 0
     for fbx_path in fbx_files:
         action = import_animation(fbx_path, armature)
@@ -262,11 +279,10 @@ def main():
 
     print(f"\nSuccessfully imported {imported_count} animations")
 
-    # Verify
+    # Step 4: Verify and export
     if not verify_animations(armature):
         print("\nWARNING: Some animations may not export correctly!")
 
-    # Export
     export_glb(OUTPUT_PATH, armature)
 
     print("\n" + "=" * 60)
